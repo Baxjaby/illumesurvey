@@ -104,7 +104,6 @@
     </div>
   </div>
 </div>
-
 <script>
 // ===== Admin mode toggle =====
 const ADMIN_PASSPHRASE = "sunset-saddle";
@@ -150,6 +149,72 @@ document.addEventListener("DOMContentLoaded", ()=>{
 });
 
 // (Survey schema + rest of script unchanged — omitted for brevity in this block)
+</script>
+  <script>
+// Put your Apps Script Web App URL here
+const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxFO4TtDoM9yHBs5Fxd7rf4ncCLbdwFC65C8eeFvZ-_NjD0c_11lU-Lp4dHHJxqzsXk/exec';
+
+async function postToSheets(row) {
+  try {
+    const res = await fetch(SHEETS_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(row)
+    });
+    return await res.json();
+  } catch (e) {
+    return { ok:false, error:String(e) };
+  }
+}
+    <script>
+/* ----- Wire Submit to Google Sheets ----- */
+(function wireSheetsSubmit(){
+  const btn = document.getElementById("submitBtn");
+  if(!btn){ console.error("submitBtn not found"); return; }
+
+  // Remove any existing listeners by cloning the node
+  const fresh = btn.cloneNode(true);
+  btn.parentNode.replaceChild(fresh, btn);
+
+  let isSubmitting = false;
+  fresh.addEventListener("click", async ()=>{
+    if(isSubmitting) return;
+    isSubmitting = true;
+
+    const row = validateAndCollect(); 
+    if(!row){ isSubmitting = false; return; }
+
+    // Keep local archive
+    responses.push(row);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(responses));
+
+    // Push to Google Sheets
+    let result = { ok:false, error:"No endpoint set" };
+    try { result = await postToSheets(row); } catch(e){ result = { ok:false, error:String(e) }; }
+
+    const who = [row.first_name, row.last_name].filter(Boolean).join(" ");
+    const statusLine = result.ok ? "Saved to Sheets" : "Saved locally only";
+    const extra = result.ok 
+      ? `<br><strong>Sheets time:</strong> ${result.stored_at || ""}` 
+      : `<br><strong>Warning:</strong> ${result.error || "Offline or blocked"}`;
+
+    const summary = `<p><strong>Submitted</strong> at ${new Date(row._ts).toLocaleString()}`
+      + `<br><strong>Customer type:</strong> ${row.role}`
+      + `${who ? "<br><strong>Name:</strong> " + who : ""}`
+      + `${row.email ? "<br><strong>Email:</strong> " + row.email : ""}`
+      + `<br><strong>Status:</strong> ${statusLine}${extra}</p>`;
+    openModal(summary);
+
+    // Reset visible controls
+    formFields.querySelectorAll("select").forEach(s=>s.value="");
+    formFields.querySelectorAll("textarea").forEach(t=>t.value="");
+    formFields.querySelectorAll(".choices input[type=checkbox]").forEach(c=>c.checked=false);
+    formFields.querySelectorAll(".inline-input").forEach(t=>{ t.value=""; t.classList.add("hide"); });
+
+    isSubmitting = false;
+  });
+})();
+</script>
 </script>
 </body>
 </html>
