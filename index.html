@@ -428,7 +428,7 @@ document.getElementById("downloadCsvQuick").addEventListener("click", ()=>{
 
 /* ================= Google Sheets Hook ================= */
 // Replace with your Apps Script Web App URL (ends with /exec)
-const SHEETS_ENDPOINT = "YOUR_SHEETS_WEB_APP_URL";
+const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbxFO4TtDoM9yHBs5Fxd7rf4ncCLbdwFC65C8eeFvZ-_NjD0c_11lU-Lp4dHHJxqzsXk/exec";
 
 async function postToSheets(row) {
   if(!SHEETS_ENDPOINT || SHEETS_ENDPOINT === "YOUR_SHEETS_WEB_APP_URL"){
