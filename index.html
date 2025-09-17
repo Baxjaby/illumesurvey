@@ -1,6 +1,9 @@
 
 <!DOCTYPE html>
 <html lang="en">
+<head><meta charset="UTF-8"><title>Illume Survey Framework</title></head>
+<body><h1>Illume Survey Framework</h1><p>This is the survey file we built together. Upload to GitHub as index.html.</p></body>
+</html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -84,7 +87,6 @@
           <button class="secondary" id="exportJsonBtn">Export JSON</button>
           <button class="secondary" id="importJsonBtn">Import JSON</button>
           <button class="warn" id="clearBtn">Clear Stored Responses</button>
-          <button class="secondary" id="adminSignOut">Exit Admin</button>
         </span>
       </div>
       <div class="subtle">Responses save in this browser. Export before clearing cache or switching devices.</div>
@@ -104,8 +106,10 @@
     </div>
   </div>
 </div>
+
 <script>
 // ===== Admin mode toggle =====
+// Change this to your own passphrase
 const ADMIN_PASSPHRASE = "sunset-saddle";
 const ADMIN_FLAG_KEY = "illume_admin_mode";
 
@@ -135,86 +139,344 @@ document.addEventListener("keydown", (e)=>{
   else setAdminMode(localStorage.getItem(ADMIN_FLAG_KEY) === "1");
 })();
 
-// ===== Sign out of Admin =====
-document.addEventListener("DOMContentLoaded", ()=>{
-  const btn = document.getElementById("adminSignOut");
-  if(btn){
-    btn.addEventListener("click", ()=>{
-      localStorage.removeItem(ADMIN_FLAG_KEY);
-      document.getElementById("adminControls").classList.add("hide");
-      document.getElementById("adminHint").classList.add("hide");
-      alert("Admin mode disabled");
-    });
+// ===== Survey schema =====
+const schema = {
+  "Magazine Subscriber": [
+    { key:"mag_sat",       label:"On a scale of 1-5, how satisfied are you with Illume Magazine?", type:"scale5" },
+    { key:"mag_enjoy",     label:"What do you enjoy most about the magazine?", type:"checkbox",
+      options:["Historical pieces","Business tips","Artisan spotlights","Industry news","Skill demonstrations","Supplier connections"], other:true },
+    { key:"mag_format",    label:"Do you prefer reading the magazine in the print or digital format?", type:"single",
+      options:["Print","Digital","Both"] },
+    { key:"mag_reco",      label:"How likely are you to recommend Illume to a fellow leatherworker?", type:"single",
+      options:["Not likely","Likely","Highly likely","Definitely"] }
+  ],
+  "Magazine Advertiser": [
+    { key:"adv_sat",       label:"How satisfied are you with your advertising experience with Illume?", type:"scale5" },
+    { key:"adv_lift",      label:"Have you noticed an increase in customer inquiries or sales from your ad?", type:"yesno" },
+    { key:"adv_again",     label:"How likely are you to advertise with us again?", type:"single",
+      options:["Not likely","Likely","Highly likely","Definitely"] },
+    { key:"adv_improve",   label:"What could we improve to make advertising with Illume more valuable to you?", type:"text" }
+  ],
+  "Learn Subscriber": [
+    { key:"learn_sat",     label:"How satisfied are you with your Learn with Illume experience?", type:"scale5" },
+    { key:"learn_chooser", label:"What determines your course selection most of the time?", type:"single",
+      options:["Skill level","Project type","Instructor"], other:true },
+    { key:"learn_freq",    label:"How often are you in the platform?", type:"single",
+      options:["Daily","Weekly","Monthly","Rarely"] },
+    { key:"learn_renew",   label:"How likely are you to continue your subscription next month?", type:"single",
+      options:["Not likely","Likely","Highly likely","Definitely"] },
+    { key:"learn_better",  label:"What is one thing that could improve your learning experience on Illume?", type:"text" }
+  ],
+  "Learn Instructor": [
+    { key:"teach_sat",     label:"How satisfied are you with your experience as an instructor on Learn with Illume?", type:"scale5" },
+    { key:"teach_process", label:"How is the process of outlining and filming courses with the Illume team?", type:"scale5" },
+    { key:"teach_engage",  label:"Have you seen engagement from students in your courses?", type:"yesno" },
+    { key:"teach_reco",    label:"Would you recommend teaching on Learn with Illume to other leather professionals?", type:"single",
+      options:["Yes","No"] },
+    { key:"teach_why_no",  label:"If no, why?", type:"text", showIf:{ field:"teach_reco", equals:"No" } },
+    { key:"teach_support", label:"What support or resources would help you create better courses?", type:"text" }
+  ],
+  "Event Attendee": [
+    { key:"evt_sat",       label:"How satisfied were you with the event?", type:"scale5" },
+    { key:"evt_best",      label:"What part of the event did you enjoy the most?", type:"single",
+      options:["Vendor hall","Competitions","Classes","Networking","Post-show events","Event staff"], other:true },
+    { key:"evt_class",     label:"Did you attend a class?", type:"single",
+      options:["No","Yes"] },
+    { key:"evt_class_rate",label:"If yes, how would you rate it?", type:"scale5",
+      showIf:{ field:"evt_class", equals:"Yes" } },
+    { key:"evt_return",    label:"How likely are you to attend again next year?", type:"single",
+      options:["Not likely","Likely","Highly likely","Definitely"] }
+  ],
+  "Event Vendor": [
+    { key:"ven_sat",       label:"How satisfied were you with your vending experience?", type:"scale5" },
+    { key:"ven_goal",      label:"Did you meet your sales expectations?", type:"yesno" },
+    { key:"ven_aud",       label:"What type of attendees were most interested in your products?", type:"checkbox",
+      options:["Hobbyists","Small business owners","Manufacturers"], other:true },
+    { key:"ven_again",     label:"How likely are you to return as a vendor next year?", type:"single",
+      options:["Not likely","Likely","Highly likely","Definitely"] },
+    { key:"ven_improve",   label:"What would improve your experience as a vendor?", type:"text" }
+  ],
+  "Event Instructor": [
+    { key:"einst_sat",     label:"How satisfied were you with your teaching experience at the event?", type:"scale5" },
+    { key:"einst_eng",     label:"Did your class meet or exceed your expectations for engagement?", type:"yesno" },
+    { key:"einst_next",    label:"Would you be interested in teaching again next year?", type:"yesno" },
+    { key:"einst_reco",    label:"How likely are you to recommend teaching at our events to other leather industry professionals?", type:"scale5" }
+  ]
+};
+
+const STORAGE_KEY = "illume_feedback_responses_framework_v2";
+const responses = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+
+const $ = (sel) => document.querySelector(sel);
+const roleSel = $("#role");
+const formFields = $("#formFields");
+
+function clearChildren(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+function makeSelect(options, placeholder="Select..."){
+  const s = document.createElement("select");
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = placeholder;
+  s.appendChild(ph);
+  options.forEach(opt => { const o = document.createElement("option"); o.textContent = opt; s.appendChild(o); });
+  return s;
+}
+function makeScale5(){ return makeSelect(["1","2","3","4","5"], "1 to 5"); }
+function makeYesNo(){ return makeSelect(["Yes","No"], "Yes or No"); }
+
+function makeCheckboxPills(options, other){
+  const wrap = document.createElement("div"); wrap.className = "choices";
+  options.forEach(opt => {
+    const pill = document.createElement("label"); pill.className = "pill";
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = opt;
+    pill.appendChild(input); pill.appendChild(document.createTextNode(opt));
+    wrap.appendChild(pill);
+  });
+  if(other){
+    const pill = document.createElement("label"); pill.className = "pill";
+    const input = document.createElement("input"); input.type = "checkbox"; input.value = "__OTHER__";
+    const txt = document.createElement("input"); txt.type = "text"; txt.className = "inline-input"; txt.maxLength = 100; txt.placeholder = "Other (max 100 chars)";
+    pill.appendChild(input); pill.appendChild(document.createTextNode("Other")); pill.appendChild(txt);
+    wrap.appendChild(pill);
   }
+  return wrap;
+}
+function getCheckboxValues(wrap){
+  const vals = [];
+  wrap.querySelectorAll("label").forEach(l => {
+    const cb = l.querySelector('input[type="checkbox"]');
+    if(cb && cb.checked){
+      if(cb.value === "__OTHER__"){
+        const t = l.querySelector('input[type="text"]');
+        if(t && t.value.trim()) vals.push(t.value.trim());
+      } else {
+        vals.push(cb.value);
+      }
+    }
+  });
+  return vals;
+}
+
+function renderField(def){
+  const holder = document.createElement("div");
+  holder.dataset.key = def.key;
+  holder.dataset.required = (def.required === false ? "false" : "true");
+  const label = document.createElement("label"); label.innerHTML = def.label + ' <span class="req">*</span>';
+  holder.appendChild(label);
+  let control;
+  if(def.type === "scale5") control = makeScale5();
+  else if(def.type === "single") {
+    control = makeSelect([...(def.options||[]), ...(def.other?["Other"]:[])]);
+    if(def.other){
+      const otherBox = document.createElement("input"); otherBox.type="text"; otherBox.className="inline-input hide"; otherBox.maxLength=100; otherBox.placeholder="Other (max 100 chars)";
+      control.addEventListener("change", ()=>{
+        if(control.value === "Other") otherBox.classList.remove("hide");
+        else { otherBox.value = ""; otherBox.classList.add("hide"); }
+      });
+      holder.appendChild(control);
+      holder.appendChild(otherBox);
+      control.dataset.otherInputId = Math.random().toString(36).slice(2);
+      otherBox.dataset.bindTo = control.dataset.otherInputId;
+      return holder;
+    }
+  }
+  else if(def.type === "yesno") control = makeYesNo();
+  else if(def.type === "text") { control = document.createElement("textarea"); control.placeholder = "Type your answer"; }
+  else if(def.type === "checkbox") control = makeCheckboxPills(def.options || [], !!def.other);
+  else control = document.createElement("input");
+  if(control) control.dataset.type = def.type;
+  holder.appendChild(control);
+  if(def.showIf){ holder.dataset.showIf = JSON.stringify(def.showIf); holder.classList.add("hide"); }
+  return holder;
+}
+
+function evaluateVisibility(){
+  const map = {};
+  formFields.querySelectorAll("[data-key]").forEach(block => {
+    const key = block.dataset.key;
+    const select = block.querySelector("select");
+    const area = block.querySelector("textarea");
+    const choices = block.querySelector(".choices");
+    let value = "";
+    if(select){ value = select.value; }
+    else if(area){ value = area.value; }
+    else if(choices){ value = getCheckboxValues(choices).join("; "); }
+    map[key] = value;
+  });
+  formFields.querySelectorAll("[data-key]").forEach(block => {
+    const rule = block.dataset.showIf ? JSON.parse(block.dataset.showIf) : null;
+    if(!rule){ block.classList.remove("hide"); return; }
+    const current = map[rule.field] || "";
+    if(current === rule.equals) block.classList.remove("hide");
+    else block.classList.add("hide");
+  });
+}
+
+function renderForm(){
+  clearChildren(formFields);
+  const role = roleSel.value;
+  if(!role || !schema[role]) return;
+  schema[role].forEach(def => formFields.appendChild(renderField(def)));
+  formFields.addEventListener("input", evaluateVisibility, { once:true });
+  formFields.addEventListener("change", evaluateVisibility);
+  evaluateVisibility();
+}
+
+roleSel.addEventListener("change", renderForm);
+
+function validateAndCollect(){
+  const role = roleSel.value;
+  if(!role){ alert("Please choose your customer type first."); return null; }
+
+  const out = { _ts:new Date().toISOString(), role };
+
+  // Optional identity fields
+  out.first_name = (document.getElementById("firstName").value || "").trim();
+  out.last_name  = (document.getElementById("lastName").value || "").trim();
+  out.email      = (document.getElementById("email").value || "").trim();
+
+  let ok = true, problems = [];
+
+  formFields.querySelectorAll("[data-key]").forEach(block => {
+    const hidden = block.classList.contains("hide");
+    if(hidden) return; // ignore hidden
+    const key = block.dataset.key;
+    const required = block.dataset.required !== "false";
+    const select = block.querySelector("select");
+    const area = block.querySelector("textarea");
+    const choices = block.querySelector(".choices");
+
+    let value = "";
+    if(select){
+      value = select.value.trim();
+      if(select.dataset.otherInputId){
+        const match = formFields.querySelector(`input.inline-input[data-bind-to="${select.dataset.otherInputId}"]`);
+        if(select.value === "Other"){
+          const v = match.value.trim();
+          if(v.length === 0) { ok = false; problems.push(block); }
+          value = v;
+        }
+      }
+    } else if(area){ value = area.value.trim(); }
+    else if(choices){
+      const vals = getCheckboxValues(choices);
+      value = vals.join("; ");
+      if(required && vals.length === 0) { ok = false; problems.push(block); }
+    }
+
+    if(required && !choices && !value){ ok = false; problems.push(block); }
+
+    out[key] = value;
+  });
+
+  if(!ok){
+    problems[0]?.scrollIntoView({ behavior:"smooth", block:"center" });
+    alert("Please complete all required fields.");
+    return null;
+  }
+  return out;
+}
+
+// ===== Storage and export =====
+function toCSV(rows){
+  if(rows.length === 0) return "";
+  const cols = Array.from(rows.reduce((set,row)=>{ Object.keys(row).forEach(k=>set.add(k)); return set; }, new Set()));
+  const esc = v => {
+    const s = String(v==null ? "" : v);
+    if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+    return s;
+  };
+  const header = cols.map(esc).join(",");
+  const body = rows.map(r => cols.map(c => esc(r[c]||"")).join(",")).join("\n");
+  return header + "\n" + body;
+}
+function normalizedJSON(rows){
+  const byRole = {};
+  for(const r of rows){
+    const role = r.role || "Unknown";
+    if(!byRole[role]) byRole[role] = [];
+    const sorted = Object.keys(r).sort().reduce((o,k)=>{ o[k]=r[k]; return o; }, {});
+    byRole[role].push(sorted);
+  }
+  const totals = Object.fromEntries(Object.entries(byRole).map(([k,v])=>[k,v.length]));
+  return { exported_at:new Date().toISOString(), total:rows.length, totals_by_role:totals, by_role:byRole };
+}
+function download(data, filename, type){
+  const blob = new Blob([data], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ===== Modal =====
+function openModal(summaryHtml){
+  const bd = document.getElementById("backdrop");
+  const body = document.getElementById("confirmBody");
+  body.innerHTML = summaryHtml;
+  bd.style.display = "flex";
+}
+function closeModal(){ document.getElementById("backdrop").style.display = "none"; }
+document.getElementById("closeModal").addEventListener("click", closeModal);
+document.getElementById("downloadCsvQuick").addEventListener("click", ()=>{
+  const csv = toCSV(responses);
+  if(!csv){ alert("No responses yet."); return; }
+  download(csv, "illume_responses.csv", "text/csv");
 });
 
-// (Survey schema + rest of script unchanged — omitted for brevity in this block)
-</script>
-  <script>
-// Put your Apps Script Web App URL here
-const SHEETS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxFO4TtDoM9yHBs5Fxd7rf4ncCLbdwFC65C8eeFvZ-_NjD0c_11lU-Lp4dHHJxqzsXk/exec';
+// ===== Buttons =====
+document.getElementById("submitBtn").addEventListener("click", ()=>{
+  const row = validateAndCollect(); if(!row) return;
+  responses.push(row);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(responses));
 
-async function postToSheets(row) {
-  try {
-    const res = await fetch(SHEETS_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(row)
-    });
-    return await res.json();
-  } catch (e) {
-    return { ok:false, error:String(e) };
+  const who = [row.first_name, row.last_name].filter(Boolean).join(" ");
+  const summary = `<p><strong>Submitted</strong> at ${new Date(row._ts).toLocaleString()}<br><strong>Customer type:</strong> ${row.role}${who ? "<br><strong>Name:</strong> " + who : ""}${row.email ? "<br><strong>Email:</strong> " + row.email : ""}</p>`;
+  openModal(summary);
+
+  // reset visible controls
+  formFields.querySelectorAll("select").forEach(s=>s.value="");
+  formFields.querySelectorAll("textarea").forEach(t=>t.value="");
+  formFields.querySelectorAll(".choices input[type=checkbox]").forEach(c=>c.checked=false);
+  formFields.querySelectorAll(".inline-input").forEach(t=>{ t.value=""; t.classList.add("hide"); });
+  // keep identity fields as typed for convenience
+});
+
+// Admin-only actions
+document.getElementById("exportCsvBtn").addEventListener("click", ()=>{
+  const csv = toCSV(responses);
+  if(!csv){ alert("No responses yet."); return; }
+  download(csv, "illume_responses.csv", "text/csv");
+});
+document.getElementById("exportJsonBtn").addEventListener("click", ()=>{
+  const obj = normalizedJSON(responses);
+  download(JSON.stringify(obj, null, 2), "illume_responses.json", "application/json");
+});
+document.getElementById("importJsonBtn").addEventListener("click", ()=>{
+  const inp = document.createElement("input"); inp.type="file"; inp.accept="application/json";
+  inp.onchange = (e)=>{
+    const file = e.target.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try {
+        const data = JSON.parse(reader.result);
+        const rows = Array.isArray(data) ? data : (data.by_role ? Object.values(data.by_role).flat() : []);
+        if(!rows || rows.length === 0) throw new Error("No rows found in JSON");
+        responses.length = 0; rows.forEach(r=>responses.push(r));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(responses));
+        alert("Imported");
+      } catch(err){ alert("Import failed: " + err.message); }
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+});
+document.getElementById("clearBtn").addEventListener("click", ()=>{
+  if(confirm("Remove all locally stored responses?")) {
+    localStorage.removeItem(STORAGE_KEY);
+    alert("Cleared");
+    location.reload();
   }
-}
-    <script>
-/* ----- Wire Submit to Google Sheets ----- */
-(function wireSheetsSubmit(){
-  const btn = document.getElementById("submitBtn");
-  if(!btn){ console.error("submitBtn not found"); return; }
-
-  // Remove any existing listeners by cloning the node
-  const fresh = btn.cloneNode(true);
-  btn.parentNode.replaceChild(fresh, btn);
-
-  let isSubmitting = false;
-  fresh.addEventListener("click", async ()=>{
-    if(isSubmitting) return;
-    isSubmitting = true;
-
-    const row = validateAndCollect(); 
-    if(!row){ isSubmitting = false; return; }
-
-    // Keep local archive
-    responses.push(row);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(responses));
-
-    // Push to Google Sheets
-    let result = { ok:false, error:"No endpoint set" };
-    try { result = await postToSheets(row); } catch(e){ result = { ok:false, error:String(e) }; }
-
-    const who = [row.first_name, row.last_name].filter(Boolean).join(" ");
-    const statusLine = result.ok ? "Saved to Sheets" : "Saved locally only";
-    const extra = result.ok 
-      ? `<br><strong>Sheets time:</strong> ${result.stored_at || ""}` 
-      : `<br><strong>Warning:</strong> ${result.error || "Offline or blocked"}`;
-
-    const summary = `<p><strong>Submitted</strong> at ${new Date(row._ts).toLocaleString()}`
-      + `<br><strong>Customer type:</strong> ${row.role}`
-      + `${who ? "<br><strong>Name:</strong> " + who : ""}`
-      + `${row.email ? "<br><strong>Email:</strong> " + row.email : ""}`
-      + `<br><strong>Status:</strong> ${statusLine}${extra}</p>`;
-    openModal(summary);
-
-    // Reset visible controls
-    formFields.querySelectorAll("select").forEach(s=>s.value="");
-    formFields.querySelectorAll("textarea").forEach(t=>t.value="");
-    formFields.querySelectorAll(".choices input[type=checkbox]").forEach(c=>c.checked=false);
-    formFields.querySelectorAll(".inline-input").forEach(t=>{ t.value=""; t.classList.add("hide"); });
-
-    isSubmitting = false;
-  });
-})();
-</script>
+});
 </script>
 </body>
 </html>
